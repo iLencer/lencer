@@ -3,19 +3,22 @@
 #
 # (C) 2012-2013 Yafei Zheng
 # V0.0 2012-12-7 10:44:39
+# V0.1 2013-01-30 02:40:57
 #
 # Email: e9999e@163.com, QQ: 1039332004
 #
 
+# **************************************************************************************************
+# 编译器：GNU as 2.21.1
+#
+# head.s的主要工作如下：
+#	1.重新设置GDT，IDT，内核堆栈（任务0用户态堆栈）
+#	2.设置默认中断
+# **************************************************************************************************
+
 .globl startup_32
 
-LATCH		= 11930				# 定时器初始计数值，即10毫秒
 SCRN_SEL	= 0x18				# 屏幕显示内存段选择符
-TSS0_SEL	= 0X20
-LDT0_SEL	= 0X28
-TSS1_SEL	= 0x30
-LDT1_SEL	= 0X38
-NO_TASK		= 111				# current==NO_TASK 表示当前还未开始执行任何任务
 
 .text
 startup_32:
@@ -31,36 +34,12 @@ startup_32:
 	mov		%ax,%fs
 	mov		%ax,%gs
 	lss		init_stack,%esp
-# 设置8253定时器芯片。每10毫秒发出一个时钟中断信号
-	movb	$0x36,%al
-	outb	%al,$0x43
-	movw	$LATCH,%ax
-	outb	%al,$0x40
-	movb	%ah,%al
-	outb	%al,$0x40
-# OK! We move to the user-mode and run task0 now.
-	pushfl
-	andl	$0xffffbfff,(%esp)	# 复位标致寄存器的嵌套任务标志位NT
-	popfl
-	movl	$LDT0_SEL,%eax
-	lldt	%ax
-	movl	$TSS0_SEL,%eax
-	ltr		%ax
-	movl	$NO_TASK,current
+# OK! We begin to run the MAIN function now.
 	movl	$0,scr_loc
-	sti							# 注意，此处开中断要在pushfl之前，否则无用
-	movl	$0x17,%eax
-	mov		%ax,%ds
-	mov		%ax,%es		
-	mov		%ax,%fs
-	mov		%ax,%gs
-	mov		%esp,%eax
-	pushl	$0x17
-	pushl	%eax
-	pushfl
-	pushl	$0x0f
-	pushl	$task0
-	iretl
+	pushl	$main
+#debug:
+#	jmp		debug
+	ret
 
 # ----------------------------------------------------
 .align 4
@@ -86,20 +65,6 @@ rp:	movl	%eax,(%edi)
 	dec		%ecx
 	cmpl	$0,%ecx
 	jne		rp
-	lea		timer_int,%edx		# 设置时钟中断门描述符
-	mov		%dx,%ax
-	movw	$0x8e00,%dx			# 中断门类型，特权级0
-	movl	$0x08,%ecx
-	lea		idt(,%ecx,8),%edi
-	movl	%eax,(%edi)
-	movl	%edx,4(%edi)
-	lea		system_call,%edx	# 设置系统调用陷阱门描述符
-	mov		%dx,%ax
-	movw	$0xef00,%dx			# 陷阱门类型，特权级3
-	movl	$0x80,%ecx
-	lea		idt(,%ecx,8),%edi
-	movl	%eax,(%edi)
-	movl	%edx,4(%edi)		
 	lidt	idt_new_48
 	popl	%edi
 	popl	%ecx
@@ -143,6 +108,10 @@ ignore_int:
 	cmpb	$0, %al
 	je		1f
 	inb		$0x60,%al			# 输出缓冲满，读出一个字符
+	mov		$0x02,%ah
+	movl	$0x10,%ebx
+	mov		%bx,%ds
+	call	write_char
 # 以下注释的代码是屏蔽键盘输入，然后再允许，用于复位键盘输入。在8042中也可以不用
 #	inb		$0x61,%al
 #	orb		$0x80,%al
@@ -160,54 +129,14 @@ ignore_int:
 	popl	%ds
 	iret
 
-.align 4
-timer_int:
-	pushl	%ebx
-	pushl	%ds
-	movb	$0x20,%al			# 向8259A主芯片发送EOI命令,将其ISR中的相应位清零.需在任务切换之前,否则时钟中断无法再次响应
-	outb	%al,$0x20
-	movl	$0x10,%ebx
-	mov		%bx,%ds
-	cmpl	$NO_TASK,current
-	je		OK
-	cmpl	$0,current
-	jne		t0
-	movl	$1,current
-	ljmp	$TSS1_SEL,$0
-	jmp		OK
-t0:	movl	$0,current
-	ljmp	$TSS0_SEL,$0
-OK:	popl	%ds
-	popl	%ebx
-	iret
-
-.align 4
-system_call:
-	pushl	%ds
-	pushl	%eax	
-	pushl	%ebx
-	pushl	%ecx
-	pushl	%edx
-	movl	$0x10,%ebx
-	mov		%bx,%ds
-	call	write_char
-	popl	%edx
-	popl	%ecx
-	popl	%ebx
-	popl	%eax
-	popl	%ds
-	iret
-
 # ----------------------------------------------------
-current:						# 当前任务号
-	.long NO_TASK
-scr_loc:						# 屏幕当前显示位置，从左上角到右下角依次显示
+scr_loc:						# 屏幕当前显示位置，从左上角到右下角依次显示哑中断字符
 	.long 0
 
 # GDT,IDT定义
 .align 4
 gdt_new_48:
-	.word (end_gdt-gdt)-1
+	.word 256*8-1
 	.long gdt
 
 idt_new_48:
@@ -217,14 +146,10 @@ idt_new_48:
 .align 8
 gdt:
 	.quad 0x0000000000000000
-	.quad 0x00c09a00000007ff
-	.quad 0x00c09200000007ff
-	.quad 0x00c0920b80000002
-	.word 0x68, tss0, 0xe900, 0x0
-	.word 0x40, ldt0, 0xe200, 0x0
-	.word 0x68, tss1, 0xe900, 0x0
-	.word 0x40, ldt1, 0xe200, 0x0
-end_gdt:
+	.quad 0x00c09a00000007ff	# 代码段，选择符0x08。
+	.quad 0x00c09200000007ff	# 数据段，选择符0x10。
+	.quad 0x00c0920b80000002	# 显示内存段，选择符0x18。临时
+	.fill 252,8,0
 
 idt:
 	.fill 256,8,0
@@ -235,64 +160,3 @@ idt:
 init_stack:
 	.long init_stack
 	.word 0x10
-
-# 任务0的LDT,TSS与内核栈
-.align 8
-ldt0:
-	.quad 0x0000000000000000
-	.quad 0x00c0fa00000003ff	# 局部代码段描述符，对应选择符0x0f，基地址0x0
-	.quad 0x00c0f200000003ff	# 局部数据段描述符，对应选择符0x17，基地址0x0
-.align 4
-tss0:
-	.long 0
-	.long ker_stk0,0x10
-	.long 0,0,0,0,0
-	.long 0,0,0,0,0
-	.long 0,0,0,0,0
-	.long 0,0,0,0,0,0
-	.long LDT0_SEL,0x08000000
-
-	.fill 128,4,0
-ker_stk0:
-
-# 任务1的LDT,TSS与内核栈
-.align 8
-ldt1:
-	.quad 0x0000000000000000
-	.quad 0x00c0fa00000003ff	# 局部代码段描述符，对应选择符0x0f，基地址0x0
-	.quad 0x00c0f200000003ff	# 局部数据段描述符，对应选择符0x17，基地址0x0
-.align 4
-tss1:
-	.long 0
-	.long ker_stk1,0x10
-	.long 0,0,0,0,0
-	.long task1,0x200,0,0,0
-	.long 0,usr_stk1,0,0,0
-	.long 0x17,0x0f,0x17,0x17,0x17,0x17
-	.long LDT1_SEL,0x08000000
-
-	.fill 128,4,0
-ker_stk1:
-
-# 任务0和1的代码
-.align 4
-task0:
-	movl	$0,current
-1:	movl	$0x0141,%eax		# 字符"A"，属性：蓝色 黑底 不闪烁 不高亮
-	int		$0x80
-	movl	$0x5ffff,%ecx
-p0:	loop	p0
-	jmp		1b
-
-.align 4
-task1:
-	movl	$0x0242,%eax		# 字符"B"，属性：绿色 黑底 不闪烁 不高亮
-	int		$0x80
-	movl	$0x5ffff,%ecx
-p1:	loop	p1
-	jmp		task1
-
-# 任务1的用户态堆栈
-.align 4
-	.fill 128,4,0
-usr_stk1:
