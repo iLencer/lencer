@@ -3,36 +3,48 @@
  * 
  * (C) 2012-2013 Yafei Zheng
  * V0.1 2013-01-30 21:48:27
+ * V0.2 2013-02-01 15:36:45
  *
  * Email: e9999e@163.com, QQ: 1039332004
  */
+#include "sys_set.h"
+#include "sys_nr.h"
+#include "string.h"
+#include "console.h"
+#include "keyboard.h"
+#include "stdio.h"
+
+extern int keyboard_int(void);
+extern int timer_int(void);
 
 int main(void)
 {
-	char showmsg[] = "Small/init/main Start !!!";
+	char showmsg[] = "Small/init/main Start!\n!!\b\bMy printf() Start!\n";
 
-	// 输出提示信息
-	__asm__(
-		"movw	$0x18,%%bx\n\t"
-		"mov	%%bx,%%gs\n\t"
-		"movl	$0,%%ebx\n\t"
-		"movl	$25,%%ecx\n\t"/* 25 个字符*/
-	"rp:"
-		"mov	$0x02,%%ah\n\t"
-		"mov	%%ds:(%%edx),%%al\n\t"
-		"shl	$1,%%ebx\n\t"
-		"movw	%%ax,%%gs:3040(%%ebx)\n\t"/* 3040/2 处开始*/
-		"shr	$1,%%ebx\n\t"
-		"inc	%%ebx\n\t"
-		"inc	%%edx\n\t"
-		"cmpl	%%ecx,%%ebx\n\t"
-		"jne	rp\n\t"
-		:: "d"(showmsg) :);
+	console_init();
+//	console_write(showmsg, strlen(showmsg));
 
-	__asm__("sti");
+	set_idt(INT_R0, keyboard_int, NR_KEYBOARD_INT);
+	set_idt(INT_R0, timer_int, NR_TIMER_INT);
+	keyboard_init();
+
+	sti();
+	
+	// My printf()
+	// 注意：printf("abc\n") 会被gcc替换为内置函数 puts("abc")。故，需在编译时需加上 -fno-builtin 选项，关闭GCC的内置函数替换功能。
+	printf(".............................\n");
+	printf("Hello %u!\n%sCopyright ZYF 2012%d\n", 2013, showmsg, -2013);
+	printf(".............................\n");
+
+	printf("=== OK.\n");
 
 	for(;;)
-	{}
+	{
+		for(int i=0; i<30; i++)
+			for(int j=0; j<10000; j++)
+				;
+//		console_write(showmsg, strlen(showmsg));
+	}
 
 	return 0;
 }

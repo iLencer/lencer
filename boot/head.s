@@ -4,6 +4,7 @@
 # (C) 2012-2013 Yafei Zheng
 # V0.0 2012-12-7 10:44:39
 # V0.1 2013-01-30 02:40:57
+# V0.2 2013-02-01 15:35:26
 #
 # Email: e9999e@163.com, QQ: 1039332004
 #
@@ -16,11 +17,14 @@
 #	2.设置默认中断
 # **************************************************************************************************
 
-.globl startup_32
-
+BOOTPOS		= 0x90000			# 启动扇区被移动到的位置。即 INITSEG * 16
 SCRN_SEL	= 0x18				# 屏幕显示内存段选择符
 
 .text
+
+.globl startup_32
+.globl idt, gdt, init_stack
+
 startup_32:
 	movl	$0x10,%eax
 	mov		%ax,%ds
@@ -34,8 +38,37 @@ startup_32:
 	mov		%ax,%fs
 	mov		%ax,%gs
 	lss		init_stack,%esp
+
+# 对8259A重编程，设置其中断号为int 0x20-0x2F。此代码参照linux-0.11
+	mov		$0x11,%al		# initi%alization sequence
+	out		%al,$0x20		# send it to 8259A-1
+	.word	0x00eb,0x00eb	# jmp $+2, jmp $+2
+	out		%al,$0xA0		# and to 8259A-2
+	.word	0x00eb,0x00eb
+	mov		$0x20,%al		# start of hardware int's (0x20)
+	out		%al,$0x21
+	.word	0x00eb,0x00eb
+	mov		$0x28,%al		# start of hardware int's 2 (0x28)
+	out		%al,$0xA1
+	.word	0x00eb,0x00eb
+	mov		$0x04,%al		# 8259-1 is master
+	out		%al,$0x21
+	.word	0x00eb,0x00eb
+	mov		$0x02,%al		# 8259-2 is slave
+	out		%al,$0xA1
+	.word	0x00eb,0x00eb
+	mov		$0x01,%al		# 8086 mode for both
+	out		%al,$0x21
+	.word	0x00eb,0x00eb
+	out		%al,$0xA1
+	.word	0x00eb,0x00eb
+	# 将以下语句注释，此处不屏蔽中断
+#	mov		$0xFF,%al		# mask off %all interrupts for now
+#	out		%al,$0x21
+#	.word	0x00eb,0x00eb
+#	out		%al,$0xA1
+
 # OK! We begin to run the MAIN function now.
-	movl	$0,scr_loc
 	pushl	$main
 #debug:
 #	jmp		debug
@@ -75,10 +108,16 @@ rp:	movl	%eax,(%edi)
 .align 4
 write_char:
 	pushl	%ebx
+	pushl	%ecx
 	pushl	%gs
+	pushl	%ds
 	movw	$SCRN_SEL,%bx
 	mov		%bx,%gs
-	movl	scr_loc,%ebx
+	movw	$0x10,%bx
+	movw	%bx,%ds
+	movl	$BOOTPOS,%ecx
+	xor		%ebx,%ebx
+	movw	%ds:(%ecx),%bx		# 取得光标位置，光标位置在boot中被保存
 	shl		$1,%ebx
 	movw	%ax,%gs:(%ebx)
 	shr		$1,%ebx
@@ -86,8 +125,10 @@ write_char:
 	cmpl	$2000,%ebx
 	jne		1f
 	movl	$0,%ebx
-1:	movl	%ebx,scr_loc
+1:	movl	%ebx,%ds:(%ecx)		# 保存光标位置
+	popl	%ds
 	popl	%gs
+	popl	%ecx
 	popl	%ebx
 	ret
 
@@ -130,8 +171,6 @@ ignore_int:
 	iret
 
 # ----------------------------------------------------
-scr_loc:						# 屏幕当前显示位置，从左上角到右下角依次显示哑中断字符
-	.long 0
 
 # GDT,IDT定义
 .align 4
@@ -146,9 +185,9 @@ idt_new_48:
 .align 8
 gdt:
 	.quad 0x0000000000000000
-	.quad 0x00c09a00000007ff	# 代码段，选择符0x08。
-	.quad 0x00c09200000007ff	# 数据段，选择符0x10。
-	.quad 0x00c0920b80000002	# 显示内存段，选择符0x18。临时
+	.quad 0x00c09a0000000fff	# 代码段，选择符0x08，基址0，限长16MB，特权级0。
+	.quad 0x00c0920000000fff	# 数据段，选择符0x10，基址0，限长16MB，特权级0。
+	.quad 0x00c0920b80000008	# 显示内存段，选择符0x18，基址0xb8000，限长32KB，特权级0。
 	.fill 252,8,0
 
 idt:

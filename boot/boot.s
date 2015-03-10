@@ -4,6 +4,7 @@
 ! (C) 2012-2013 Yafei Zheng
 ! V0.0 2012-12-6 20:24:19
 ! V0.1 2013-01-28 11:54:16
+! V0.2 2013-02-01 15:36:18
 !
 ! Email: e9999e@163.com, QQ: 1039332004
 !
@@ -126,9 +127,33 @@ read_error:
 die:
 	jmp		die
 
+! 以下开始获取并保存系统相关信息，注意，这里将覆盖前面执行过的代码，希望不要超出范围 :-)
+
+! 获取光标位置并保存，注意此处保存的是转换之后的线性值
+! BIOS 中断10h 的读光标功能号ah = 03
+! 输入：bh = 页号
+! 返回：ch = 扫描开始线，cl = 扫描结束线，dh = 行号(00 是顶端)，dl = 列号(00 是左边)。	
+ok_load:
+	mov		ax,#INITSEG				! Oh，这里不应再是 BOOTSEG
+	mov		ds,ax
+	mov		ah,#0x03
+	xor		bh,bh
+	int		0x10
+	mov		ax,#80					! 默认的80 * 25显示模式
+	mul		dh
+	mov		dh,#0
+	add		ax,dx
+	mov		[0],ax					! ds = INITSEG， 从 INITSEG 开始
+
+! 获取扩展内存大小（KB），多于1mb的内存
+! 调用中断15h，功能号ah = 88
+! 返回：ax = 从100000（1M）处开始的扩展内存大小(KB)。若出错则CF 置位，ax = 出错码。
+	mov		ah,#0x88
+	int		0x15
+	mov		[2],ax
+
 ! 将内核移动到0x0处
 !
-!ok_load:
 !	cli								! 关中断
 !	mov		ax,#SYSSEG
 !	mov		ds,ax
@@ -140,7 +165,6 @@ die:
 !	rep
 !	movw
 !
-ok_load:
 	cli								! 关中断
 	xor		bx,bx
 rp_move:
