@@ -1,10 +1,7 @@
 /*
  * Small/include/keyboard.h
  * 
- * (C) 2012-2013 Yafei Zheng
- * V0.2 2013-01-31 15:00:25
- *
- * Email: e9999e@163.com, QQ: 1039332004
+ * (C) 2012-2013 Yafei Zheng <e9999e@163.com>
  */
 
 #ifndef _KEYBOARD_H_
@@ -12,10 +9,10 @@
 
 #include "types.h"
 
-//**********************************************************************
-// 定义用于键盘缓冲区循环队列
+/********************************************************************/
+/* 定义用于键盘缓冲区循环队列 */
 
-#define KEY_BUFF_SIZE 32				// 键盘缓冲区大小
+#define KEY_BUFF_SIZE (32)				/* 键盘缓冲区大小 */
 
 typedef struct keyboard_buff_queue {
 	int q_head;
@@ -24,12 +21,12 @@ typedef struct keyboard_buff_queue {
 	char q_buff[KEY_BUFF_SIZE];
 }KB_QUEUE;
 
-//**********************************************************************
-// 以下宏定义用于按键标志
+/********************************************************************/
+/* 以下宏定义用于按键标志 */
 
-#define FLAG_BREAK		(1<<31)			// 键松开标志
+#define FLAG_BREAK		(1<<31)			/* 键松开标志 */
 
-// mode
+/* mode */
 #define SHIFT_L_DOWN	(1<<0)
 #define SHIFT_R_DOWN	(1<<1)
 #define CTRL_L_DOWN		(1<<2)
@@ -37,18 +34,18 @@ typedef struct keyboard_buff_queue {
 #define ALT_L_DOWN		(1<<4)
 #define ALT_R_DOWN		(1<<5)
 
-// lock
+/* lock */
 #define NUM_LOCK_DOWN	(1<<0)
 #define CAPS_LOCK_DOWN	(1<<1)
 #define SCROLL_LOCK_DOWN	(1<<2)
 
-//**********************************************************************
-// 以下宏定义用于 keymap
+/********************************************************************/
+/* 以下宏定义用于 keymap */
 
-#define NR_SCAN_CODES	0x80			// 键盘扫描码个数
-#define KEY_MAP_COLS	3				// key_map 列数
+#define NR_SCAN_CODES	(0x80)			/* 键盘扫描码个数 */
+#define KEY_MAP_COLS	(3)				/* key_map 列数 */
 
-#define FLAG_CONTR_KEY	0x100			// 控制键开始值
+#define FLAG_CONTR_KEY	(0x100)			/* 控制键开始值 */
 
 /* Special keys */
 #define ESC			(0x01 + FLAG_CONTR_KEY)	/* Esc		*/
@@ -135,11 +132,11 @@ typedef struct keyboard_buff_queue {
 #define PAD_MID		PAD_5			/* Middle key	*/
 #define PAD_DEL		PAD_DOT			/* Del		*/
 
-//**********************************************************************
+/********************************************************************/
 extern void keyboard_hander(void);
 extern unsigned int scan_to_key(unsigned char scan_code);
 extern BOOL cook_scan_code(unsigned char scan_code, char *cooked);
 extern void keyboard_init(void);
 
-//**********************************************************************
-#endif	// _KEYBOARD_H_
+/********************************************************************/
+#endif	/* _KEYBOARD_H_ */
